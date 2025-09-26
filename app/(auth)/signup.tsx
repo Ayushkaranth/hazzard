@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons'; // Import icons
+import { Link, router } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  ImageBackground, // Import ImageBackground
+    ActivityIndicator,
+    Alert,
+    ImageBackground,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link, router } from 'expo-router';
-import { useAuth } from '../../context/auth.context';
-import { Ionicons } from '@expo/vector-icons'; // Import icons
+import { useAuth } from '../../context/AuthContext';
 
 // A placeholder ocean image. Replace with your own!
 const oceanImage = { uri: 'https://unsplash.com/photos/a-group-of-fish-swimming-in-an-aquarium-sInnJmPJfCw' };
@@ -88,7 +88,7 @@ export default function RegisterScreen() {
     setLoading(false);
 
     if (success) {
-      router.replace('/(tabs)/home' as any);
+      router.replace('/(tabs)');
     }
   };
 

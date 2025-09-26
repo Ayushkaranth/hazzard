@@ -1,19 +1,22 @@
 // app/layout.tsx
 import { Stack } from 'expo-router';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider } from '../context/auth.context';
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider } from '../context/AuthContext';
+import { LocationProvider } from '../context/LocationContext';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
         <AuthProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              <Stack.Screen name="auth" options={{ headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
-            </Stack>
+            <LocationProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  <Stack.Screen name="splash" options={{ headerShown: false }} />
+                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                </Stack>
+            </LocationProvider>
         </AuthProvider>
     </SafeAreaProvider>
   );

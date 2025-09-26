@@ -1,20 +1,20 @@
+import { Link, router } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  ImageBackground,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+    ActivityIndicator,
+    Alert,
+    ImageBackground,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link, router } from 'expo-router';
-import { useAuth } from '../../context/auth.context'
+import { useAuth } from '../../context/AuthContext';
 // A placeholder ocean image. Replace with your own!
 const oceanImage = { uri: 'https://unsplash.com/photos/a-group-of-fish-swimming-in-an-aquarium-sInnJmPJfCw' };
 
@@ -36,7 +36,7 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (success) {
-      router.replace('/(tabs)/home' as any);
+      router.replace('/(tabs)');
     }
   };
 

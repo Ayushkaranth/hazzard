@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-wrapper-object-types */
 // contexts/AuthContext.tsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
 interface User {
@@ -42,32 +42,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const storedToken = await AsyncStorage.getItem('token');
       const storedUser = await AsyncStorage.getItem('user');
+      const timestamp = await AsyncStorage.getItem('usertokenTimestamp');
       
       console.log('Stored Token:', storedToken);
       console.log('Stored User:', storedUser);
-      if (storedToken && storedUser) {
+      
+      if (storedToken && storedUser && timestamp) {
+        const storedTime = parseInt(timestamp, 10);
+        const currentTime = Date.now();
+        const TOKEN_EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+        
+        // Check if token is expired
+        if (currentTime - storedTime > TOKEN_EXPIRY_TIME) {
+          console.log('Token expired, clearing storage');
+          await clearAuthData();
+          return;
+        }
+        
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
-        
-        // Verify token is still valid
-        const response = await fetch(`${API_BASE_URL}/auth/check-auth`, {
-          headers: {
-            'Authorization': `Bearer ${storedToken}`,
-          },
-        });
-        
-        if (!response.ok) {
-          // Token is invalid, clear storage
-          await AsyncStorage.removeItem('token');
-          await AsyncStorage.removeItem('user');
-          setToken(null);
-          setUser(null);
-        }
       }
     } catch (error) {
       console.error('Error checking login status:', error);
+      await clearAuthData();
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const clearAuthData = async () => {
+    try {
+      await AsyncStorage.multiRemove(['token', 'user', 'userId', 'usertokenTimestamp']);
+      setToken(null);
+      setUser(null);
+    } catch (error) {
+      console.error('Error clearing auth data:', error);
     }
   };
 
@@ -94,7 +103,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(data.user);
         return true;
       } else {
-        Alert.alert('Login Failed', data.message);
+        Alert.alert('Login Failed', data.message || 'Invalid credentials');
         return false;
       }
     } catch (error) {
@@ -119,12 +128,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (data.success) {
         await AsyncStorage.setItem('token', data.token);
         await AsyncStorage.setItem('user', JSON.stringify(data.user));
+        await AsyncStorage.setItem('userId', JSON.stringify(data.user.id));
+        await AsyncStorage.setItem('usertokenTimestamp', Date.now().toString());
         setToken(data.token);
         setUser(data.user);
-        Alert.alert('Success', data.message);
+        Alert.alert('Success', data.message || 'Account created successfully!');
         return true;
       } else {
-        Alert.alert('Registration Failed', data.message);
+        Alert.alert('Registration Failed', data.message || 'Failed to create account');
         return false;
       }
     } catch (error) {
@@ -138,20 +149,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       if (token) {
         // Call logout API
-        await fetch(`${API_BASE_URL}/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        try {
+          await fetch(`${API_BASE_URL}/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+        } catch (apiError) {
+          console.warn('Could not call logout API, but continuing with local logout:', apiError);
+        }
       }
       
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
-      setToken(null);
-      setUser(null);
+      await clearAuthData();
     } catch (error) {
       console.error('Logout error:', error);
+      // Even if there's an error, clear local data
+      await clearAuthData();
     }
   };
 
