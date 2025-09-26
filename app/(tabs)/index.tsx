@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   RefreshControl,
@@ -10,98 +11,103 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Hyperlink from 'react-native-hyperlink';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// --- UPDATED DUMMY DATA WITH INDIAN CONTEXT ---
-const DUMMY_HAZARDS = [
-  {
-    id: '1',
-    type: 'Oil Spill',
-    location: 'Off the coast of Mumbai Port, Maharashtra',
-    description: 'Visible oil slick reported by local fishermen near the shipping lanes. Coast Guard has been alerted.',
-    reporter: 'Rajesh Kumar',
-    timestamp: '2 hours ago',
-    image: 'https://i.guim.co.uk/img/media/27974093ba1227c5e6ba29794f15a8c72266c447/0_68_2048_1229/master/2048.jpg?width=700&quality=85&auto=format&fit=max&s=15a4881cd784cc6047b23e5972c9b343',
-    severity: 'high',
-    coordinates: { lat: 18.9647, lng: 72.8258 },
-  },
-  {
-    id: '2',
-    type: 'Plastic Debris',
-    location: 'Juhu Beach, Mumbai',
-    description: 'Large accumulation of plastic bottles and single-use plastics after the recent high tide. Community cleanup scheduled.',
-    reporter: 'Ananya Desai',
-    timestamp: '5 hours ago',
-    image: 'https://cdn.britannica.com/81/155881-050-38801D86/waste-beach-land-pollution-soil-water-health.jpg',
-    severity: 'medium',
-    coordinates: { lat: 19.0886, lng: 72.8265 },
-  },
-  {
-    id: '3',
-    type: 'Algal Bloom',
-    location: 'Vembanad Lake, Kerala',
-    description: 'Water has turned a reddish-brown, and dead fish are washing ashore. Suspected harmful algal bloom.',
-    reporter: 'Suresh Menon',
-    timestamp: '1 day ago',
-    image: 'https://oceanservice.noaa.gov/education/tutorial-coastal/harmful-algal-blooms/habs02_fishkill-960.jpg',
-    severity: 'high',
-    coordinates: { lat: 9.7331, lng: 76.3335 },
-  },
-  {
-    id: '4',
-    type: 'Hide Tides',
-    location: 'Candolim Beach, Goa',
-    description: 'High tides between 6 A.M to 8:30 AM causing flooding of beach shacks and nearby roads.',
-    reporter: 'Priya Fernandes',
-    timestamp: '2 days ago',
-    image: 'https://images.mid-day.com/images/images/2024/may/HighTideAtulKamble_d.jpg',
-    severity: 'medium',
-    coordinates: { lat: 15.5173, lng: 73.7649 },
-  },
-  {
-    id: '5',
-    type: 'Sewage Outflow',
-    location: 'Near Hooghly River estuary, WB',
-    description: 'Untreated sewage creating a foul smell and discolored water flowing into the Bay of Bengal.',
-    reporter: 'Amit Banerjee',
-    timestamp: '3 days ago',
-    image: 'https://www.greenpeace.org.uk/wp-content/uploads/2024/06/sewage-outflow-scaled-1.jpeg',
-    severity: 'high',
-    coordinates: { lat: 21.7588, lng: 88.0063 },
-  },
-];
+// API URL for fetching reports
+const API_URL = 'https://sih-backend-1-hiow.onrender.com/api/reports/getall';
 
-const getSeverityColor = (severity: string) => {
-  switch (severity) {
-    case 'high': return '#EF4444';
-    case 'medium': return '#F97316';
-    case 'low': return '#10B981';
-    default: return '#6B7280';
+// --- HELPER FUNCTIONS ---
+
+// Maps the backend status to a severity level and color
+const getSeverityInfo = (status) => {
+  switch (status) {
+    case 'resolved':
+      return { level: 'low', color: '#10B981' };
+    case 'in_progress':
+      return { level: 'medium', color: '#F97316' };
+    case 'pending':
+    default:
+      return { level: 'high', color: '#EF4444' };
   }
 };
 
-const getHazardIcon = (type: string) => {
-  switch (type) {
-    case 'Oil Spill': return '🛢️';
-    case 'Sewage Outflow': return '☣️';
-    case 'Plastic Debris': return '🗑️';
-    case 'Algal Bloom': return '🌊';
-    case 'Tarball Deposition': return '⚫';
-    default: return '⚠️';
-  }
+// Maps the backend hazardType to an icon
+const getHazardIcon = (type) => {
+  const typeLower = type.toLowerCase();
+  if (typeLower.includes('oil')) return '🛢️';
+  if (typeLower.includes('sewage')) return '☣️';
+  if (typeLower.includes('plastic') || typeLower.includes('debris')) return '🗑️';
+  if (typeLower.includes('algal')) return '🌿';
+  if (typeLower.includes('tide')) return '🌊';
+  return '⚠️'; // Default for "other" or unknown types
 };
+
+// Converts ISO date strings to a "time ago" format
+const formatTimeAgo = (dateString) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  let interval = seconds / 31536000;
+  if (interval > 1) return Math.floor(interval) + " years ago";
+  interval = seconds / 2592000;
+  if (interval > 1) return Math.floor(interval) + " months ago";
+  interval = seconds / 86400;
+  if (interval > 1) return Math.floor(interval) + " days ago";
+  interval = seconds / 3600;
+  if (interval > 1) return Math.floor(interval) + " hours ago";
+  interval = seconds / 60;
+  if (interval > 1) return Math.floor(interval) + " minutes ago";
+  return Math.floor(seconds) + " seconds ago";
+};
+
 
 export default function CommunityScreen() {
-  const [hazards, setHazards] = useState(DUMMY_HAZARDS);
+  const [hazards, setHazards] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // --- DATA FETCHING ---
+  const fetchHazards = useCallback(async () => {
+    try {
+      const response = await fetch(API_URL);
+      const json = await response.json();
+
+      if (json.success && Array.isArray(json.data)) {
+        // Transform the API data to match the component's expected structure
+        const formattedData = json.data.map(item => ({
+          id: item._id,
+          type: item.hazardType.charAt(0).toUpperCase() + item.hazardType.slice(1),
+          location: `Lat: ${item.latitude.toFixed(4)}, Lng: ${item.longitude.toFixed(4)}`,
+          description: item.description,
+          reporter: 'Community User', // API does not provide a name, so we use a placeholder
+          timestamp: formatTimeAgo(item.createdAt),
+          image: item.mediaUrl || 'https://images.unsplash.com/photo-1593968568932-b0b3826625a5?q=80&w=2940&auto=format&fit=crop', // A default image if none is provided
+          severity: getSeverityInfo(item.status).level,
+          coordinates: { lat: item.latitude, lng: item.longitude },
+        }));
+        setHazards(formattedData);
+      } else {
+        console.error("API did not return successful data:", json);
+      }
+    } catch (error) {
+      console.error("Failed to fetch hazards:", error);
+      // Optionally, set an error state here to show an error message in the UI
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHazards();
+  }, [fetchHazards]);
+
   const onRefresh = () => {
     setRefreshing(true);
-    // Simulate fetching new data
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    fetchHazards();
   };
 
   const filteredHazards = hazards.filter(hazard =>
@@ -109,39 +115,58 @@ export default function CommunityScreen() {
     hazard.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const renderHazardItem = ({ item }) => (
-    <TouchableOpacity style={styles.hazardCard}>
-      <Image source={{ uri: item.image }} style={styles.hazardImage} />
-      
-      <View style={styles.hazardContent}>
-        <View style={styles.hazardHeader}>
-          <View style={styles.hazardTypeContainer}>
-            <Text style={styles.hazardIcon}>{getHazardIcon(item.type)}</Text>
-            <Text style={styles.hazardType}>{item.type}</Text>
-          </View>
-          <View style={[styles.severityBadge, { backgroundColor: getSeverityColor(item.severity) }]}>
-            <Ionicons name="warning-outline" size={12} color="#fff" />
-            <Text style={styles.severityText}>{item.severity.toUpperCase()}</Text>
-          </View>
-        </View>
+  const renderHazardItem = ({ item }) => {
+    const severityInfo = getSeverityInfo(item.severity === 'high' ? 'pending' : item.severity);
 
-        <View style={styles.locationContainer}>
-          <Ionicons name="location-outline" size={16} color="#6B7280" />
-          <Text style={styles.locationText}>{item.location}</Text>
-        </View>
+    return (
+        <TouchableOpacity style={styles.hazardCard}>
+            <Image source={{ uri: item.image }} style={styles.hazardImage} />
+            <View style={styles.hazardContent}>
+                <View style={styles.hazardHeader}>
+                    <View style={styles.hazardTypeContainer}>
+                        <Text style={styles.hazardIcon}>{getHazardIcon(item.type)}</Text>
+                        <Text style={styles.hazardType}>{item.type}</Text>
+                    </View>
+                    <View style={[styles.severityBadge, { backgroundColor: severityInfo.color }]}>
+                        <Ionicons name="warning-outline" size={12} color="#fff" />
+                        <Text style={styles.severityText}>{severityInfo.level.toUpperCase()}</Text>
+                    </View>
+                </View>
 
-        <Text style={styles.description}>{item.description}</Text>
+                <View style={styles.locationContainer}>
+                    <Ionicons name="location-outline" size={16} color="#6B7280" />
+                    <Text style={styles.locationText}>{item.location}</Text>
+                </View>
 
-        <View style={styles.hazardFooter}>
-          <Text style={styles.reporter}>Reported by {item.reporter}</Text>
-          <View style={styles.timeContainer}>
-            <Ionicons name="time-outline" size={14} color="#6B7280" />
-            <Text style={styles.timestamp}>{item.timestamp}</Text>
-          </View>
-        </View>
+                {/* --- THIS IS THE MODIFIED PART --- */}
+                <Hyperlink
+                  linkDefault={true} // This makes links open in the browser
+                  linkStyle={styles.linkStyle} // Apply a blue, underlined style
+                >
+                  <Text style={styles.description}>{item.description}</Text>
+                </Hyperlink>
+                {/* ---------------------------------- */}
+
+                <View style={styles.hazardFooter}>
+                    <Text style={styles.reporter}>Reported by {item.reporter}</Text>
+                    <View style={styles.timeContainer}>
+                        <Ionicons name="time-outline" size={14} color="#6B7280" />
+                        <Text style={styles.timestamp}>{item.timestamp}</Text>
+                    </View>
+                </View>
+            </View>
+        </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#0EA5E9" />
+        <Text style={styles.loadingText}>Fetching Reports...</Text>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -172,18 +197,36 @@ export default function CommunityScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#0EA5E9"]} />
         }
         contentContainerStyle={styles.listContainer}
+        ListEmptyComponent={
+          <View style={styles.centerContainer}>
+            <Text>No reports found.</Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
 }
 
+
+// --- STYLES (Mostly unchanged) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#64748b',
   },
   header: {
     paddingHorizontal: 20,
@@ -235,8 +278,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listContainer: {
-    padding: 20,
+    paddingHorizontal: 20,
     paddingTop: 0,
+    paddingBottom: 20,
   },
   hazardCard: {
     backgroundColor: '#fff',
@@ -250,6 +294,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     resizeMode: 'cover',
+    backgroundColor: '#e2e8f0' // Placeholder color
   },
   hazardContent: {
     padding: 16,
@@ -297,6 +342,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '500',
+    flexShrink: 1,
   },
   description: {
     fontSize: 14,
@@ -322,5 +368,15 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 12,
     color: '#9CA3AF',
+  },
+  description: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  linkStyle: {
+    color: '#007BFF', // A standard blue link color
+    textDecorationLine: 'underline',
   },
 });
