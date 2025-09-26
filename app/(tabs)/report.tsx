@@ -25,7 +25,7 @@ interface HazardType {
 
 const HAZARD_TYPES: HazardType[] = [
   { id: 'flood', name: 'Flood', icon: '🌊' },            // water wave
-  { id: 'Broken Buildings', name: 'Broken Buildings', icon: '🏚️' }, // collapsed house
+  { id: 'Broken_Buildings', name: 'Broken Buildings', icon: '🏚️' }, // collapsed house
   { id: 'oil_spill', name: 'Oil Spill', icon: '🛢️' },   // oil drum
   { id: 'ocean_trash', name: 'Ocean Trash', icon: '🗑️' }, // trash bin
   { id: 'other', name: 'Other', icon: '⚠️' },           // warning
