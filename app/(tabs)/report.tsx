@@ -24,12 +24,13 @@ interface HazardType {
 }
 
 const HAZARD_TYPES: HazardType[] = [
-  { id: 'flood', name: 'Flood', icon: '🌊' },
-  { id: 'tsunami', name: 'Tsunami', icon: '🌊' },
-  { id: 'oil_spill', name: 'Oil Spill', icon: '🛢️' },
-  { id: 'high_waves', name: 'High Waves', icon: '🌊' },
-  { id: 'other', name: 'Other', icon: '⚠️' },
+  { id: 'flood', name: 'Flood', icon: '🌊' },            // water wave
+  { id: 'Broken Buildings', name: 'Broken Buildings', icon: '🏚️' }, // collapsed house
+  { id: 'oil_spill', name: 'Oil Spill', icon: '🛢️' },   // oil drum
+  { id: 'ocean_trash', name: 'Ocean Trash', icon: '🗑️' }, // trash bin
+  { id: 'other', name: 'Other', icon: '⚠️' },           // warning
 ];
+
 
 export default function ReportScreen() {
   const [selectedHazard, setSelectedHazard] = useState<HazardType | null>(null);
