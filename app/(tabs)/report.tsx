@@ -1,72 +1,169 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { Check, ChevronDown, MapPin, Upload, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
-    Alert,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../context/AuthContext';
+import { useLocation } from '../../context/LocationContext';
 
-const HAZARD_TYPES = [
-  { id: '1', name: 'Oil Spill', icon: '🛢️' },
-  { id: '2', name: 'Plastic Debris', icon: '🗑️' },
-  { id: '3', name: 'Red Tide', icon: '🌊' },
-  { id: '4', name: 'Jellyfish', icon: '🎐' },
-  { id: '5', name: 'Chemical Discharge', icon: '☠️' },
-  { id: '6', name: 'Dead Marine Life', icon: '🐟' },
-  { id: '7', name: 'Hide Tides', icon: '⚠️' },
-  { id: '8', name: 'Tusnami', icon: '☠️' },
+interface HazardType {
+  id: string;
+  name: string;
+  icon: string;
+}
+
+const HAZARD_TYPES: HazardType[] = [
+  { id: 'flood', name: 'Flood', icon: '🌊' },
+  { id: 'tsunami', name: 'Tsunami', icon: '🌊' },
+  { id: 'oil_spill', name: 'Oil Spill', icon: '🛢️' },
+  { id: 'high_waves', name: 'High Waves', icon: '🌊' },
+  { id: 'other', name: 'Other', icon: '⚠️' },
 ];
 
 export default function ReportScreen() {
-  const [selectedHazard, setSelectedHazard] = useState(null);
+  const [selectedHazard, setSelectedHazard] = useState<HazardType | null>(null);
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [showHazardPicker, setShowHazardPicker] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const { token } = useAuth();
+  const { location: currentLocation } = useLocation();
 
   const handleSubmit = async () => {
-    if (!selectedHazard || !location || !description) {
+    if (!selectedHazard || !description) {
       Alert.alert('Missing Information', 'Please fill in all required fields.');
+      return;
+    }
+
+    if (!currentLocation) {
+      Alert.alert('Location Error', 'Unable to get your current location. Please ensure location services are enabled.');
+      return;
+    }
+
+    if (!token) {
+      Alert.alert('Authentication Error', 'Please log in to submit a report.');
       return;
     }
 
     setIsSubmitting(true);
 
-    // Simulate submission
-    setTimeout(() => {
-      setIsSubmitting(false);
-      Alert.alert('Success', 'Hazard report submitted successfully!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Reset form
-            setSelectedHazard(null);
-            setLocation('');
-            setDescription('');
-            setSelectedImage(null);
-          }
+    try {
+      const formData = new FormData();
+      formData.append('hazardType', selectedHazard.id); // Use the enum value (id) instead of name
+      formData.append('description', description);
+      formData.append('latitude', currentLocation.latitude.toString());
+      formData.append('longitude', currentLocation.longitude.toString());
+      // Include userId in body per request
+      try {
+        const storedUser = await AsyncStorage.getItem('user');
+        const parsed = storedUser ? JSON.parse(storedUser) : null;
+        if (parsed?.id) {
+          formData.append('userId', parsed.id);
         }
-      ]);
-    }, 2000);
+      } catch {}
+      
+      if (selectedImage) {
+        formData.append('media', {
+          uri: selectedImage,
+          type: 'image/jpeg',
+          name: 'report_image.jpg',
+        } as any);
+      }
+
+      const response = await fetch('https://sih-backend-1-hiow.onrender.com/api/reports/report', {
+        method: 'POST',
+        // No Authorization header (per instruction), let fetch set multipart boundary
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Report submit failed', response.status, text);
+        Alert.alert('Error', text || `Failed with status ${response.status}`);
+        return; // Avoid reading body twice
+      }
+
+      const data = await response.json();
+      console.log("Response from Report: ", data);
+
+      if (data.success) {
+        Alert.alert('Success', 'Hazard report submitted successfully!', [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setSelectedHazard(null);
+              setLocation('');
+              setDescription('');
+              setSelectedImage(null);
+            }
+          }
+        ]);
+      } else {
+        Alert.alert('Error', data.message || 'Failed to submit report. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      Alert.alert('Error', 'Network error. Please check your connection and try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const selectImage = () => {
-    // Simulate image selection
-    setSelectedImage('https://images.pexels.com/photos/2280549/pexels-photo-2280549.jpeg?auto=compress&cs=tinysrgb&w=400');
+  const selectImage = async () => {
+    try {
+      // Request permission to access media library
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error selecting image:', error);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    }
   };
 
   const getCurrentLocation = () => {
-    // Simulate getting current location
-    setLocation('Santa Monica Beach, CA');
+    if (currentLocation) {
+      setLocation(`Lat: ${currentLocation.latitude.toFixed(4)}, Lng: ${currentLocation.longitude.toFixed(4)}`);
+    } else {
+      Alert.alert('Location Error', 'Unable to get your current location. Please ensure location services are enabled.');
+    }
   };
+
+  // Auto-fill location when component mounts
+  React.useEffect(() => {
+    if (currentLocation && !location) {
+      setLocation(`Lat: ${currentLocation.latitude.toFixed(4)}, Lng: ${currentLocation.longitude.toFixed(4)}`);
+    }
+  }, [currentLocation, location]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -82,7 +179,10 @@ export default function ReportScreen() {
             <Text style={styles.label}>Hazard Type *</Text>
             <TouchableOpacity
               style={styles.picker}
-              onPress={() => setShowHazardPicker(true)}
+              onPress={() => {
+                console.log('Opening hazard picker');
+                setShowHazardPicker(true);
+              }}
             >
               <View style={styles.pickerContent}>
                 {selectedHazard ? (
@@ -100,11 +200,12 @@ export default function ReportScreen() {
 
           {/* Location */}
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Location *</Text>
+            <Text style={styles.label}>Location</Text>
+            <Text style={styles.subLabel}>Your current location coordinates are automatically included</Text>
             <View style={styles.locationContainer}>
               <TextInput
                 style={styles.locationInput}
-                placeholder="Enter location or use current location"
+                placeholder="Optional: Add location description (e.g., 'Near Marina Beach')"
                 value={location}
                 onChangeText={setLocation}
                 placeholderTextColor="#9CA3AF"
@@ -183,44 +284,62 @@ export default function ReportScreen() {
         visible={showHazardPicker}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowHazardPicker(false)}
+        onRequestClose={() => {
+          console.log('Modal close requested');
+          setShowHazardPicker(false);
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Hazard Type</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowHazardPicker(false)}
-              >
-                <X size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.hazardList}>
-              {HAZARD_TYPES.map((hazard) => (
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowHazardPicker(false)}
+          >
+            <TouchableOpacity 
+              style={styles.modalContent}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Hazard Type</Text>
                 <TouchableOpacity
-                  key={hazard.id}
-                  style={[
-                    styles.hazardOption,
-                    selectedHazard?.id === hazard.id && styles.hazardOptionSelected
-                  ]}
+                  style={styles.closeButton}
                   onPress={() => {
-                    setSelectedHazard(hazard);
+                    console.log('Close button pressed');
                     setShowHazardPicker(false);
                   }}
                 >
-                  <View style={styles.hazardOptionContent}>
-                    <Text style={styles.hazardIcon}>{hazard.icon}</Text>
-                    <Text style={styles.hazardName}>{hazard.name}</Text>
-                  </View>
-                  {selectedHazard?.id === hazard.id && (
-                    <Check size={20} color="#0EA5E9" />
-                  )}
+                  <X size={24} color="#6B7280" />
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+              </View>
+
+              <ScrollView style={styles.hazardList} showsVerticalScrollIndicator={false}>
+                {HAZARD_TYPES.map((hazard) => (
+                  <TouchableOpacity
+                    key={hazard.id}
+                    style={[
+                      styles.hazardOption,
+                      selectedHazard?.id === hazard.id && styles.hazardOptionSelected
+                    ]}
+                    onPress={() => {
+                      console.log('Hazard selected:', hazard.name);
+                      setSelectedHazard(hazard);
+                      setShowHazardPicker(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.hazardOptionContent}>
+                      <Text style={styles.hazardIcon}>{hazard.icon}</Text>
+                      <Text style={styles.hazardName}>{hazard.name}</Text>
+                    </View>
+                    {selectedHazard?.id === hazard.id && (
+                      <Check size={20} color="#0EA5E9" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </View>
       </Modal>
     </SafeAreaView>
@@ -404,6 +523,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '70%',
+    minHeight: 300,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -432,6 +552,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
+    minHeight: 60,
   },
   hazardOptionSelected: {
     backgroundColor: '#f0f9ff',
