@@ -2,17 +2,20 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Modal,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../context/AuthContext';
+import { useLocation } from '../../context/LocationContext';
 
 // --- EXPANDED DUMMY DATA FOR ALL OF INDIA ---
 const DUMMY_HAZARDS = [
@@ -50,6 +53,12 @@ export default function MapScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedHazard, setSelectedHazard] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showSOSModal, setShowSOSModal] = useState(false);
+  const [sosMessage, setSosMessage] = useState('');
+  const [isSendingSOS, setIsSendingSOS] = useState(false);
+  
+  const { wsConnection, isConnected } = useAuth();
+  const { location: currentLocation } = useLocation();
 
   // Default location set to Central India for a wider view
   const defaultLocation = {
@@ -85,14 +94,58 @@ export default function MapScreen() {
   };
 
   const handleSOSPress = () => {
-    Alert.alert(
-      'Emergency SOS',
-      'Are you in immediate danger? This will alert nearby authorities.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Proceed', onPress: () => console.log('SOS Activated!'), style: 'destructive' },
-      ]
-    );
+    if (!isConnected || !wsConnection) {
+      Alert.alert('Connection Error', 'Please check your internet connection and try again.');
+      return;
+    }
+    
+    if (!currentLocation) {
+      Alert.alert('Location Error', 'Unable to get your current location. Please ensure location services are enabled.');
+      return;
+    }
+    
+    setShowSOSModal(true);
+  };
+
+  const sendSOS = async () => {
+    if (!sosMessage.trim()) {
+      Alert.alert('Error', 'Please enter a message for your SOS alert.');
+      return;
+    }
+
+    if (!currentLocation) {
+      Alert.alert('Error', 'Unable to get your current location.');
+      return;
+    }
+
+    setIsSendingSOS(true);
+
+    try {
+      const sosData = {
+        type: 'sos_notification',
+        payload: {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          msg: sosMessage.trim()
+        }
+      };
+
+      wsConnection?.send(JSON.stringify(sosData));
+      
+      Alert.alert(
+        'SOS Sent!', 
+        'Your emergency alert has been sent to authorities. Help is on the way!',
+        [{ text: 'OK', onPress: () => {
+          setShowSOSModal(false);
+          setSosMessage('');
+        }}]
+      );
+    } catch (error) {
+      console.error('Error sending SOS:', error);
+      Alert.alert('Error', 'Failed to send SOS alert. Please try again.');
+    } finally {
+      setIsSendingSOS(false);
+    }
   };
 
   useEffect(() => {
@@ -195,10 +248,6 @@ export default function MapScreen() {
 </View>
 
 
-          {/* SOS Button (floating center bottom) */}
-          <TouchableOpacity style={styles.sosButton} onPress={handleSOSPress}>
-            <Text style={styles.sosButtonText}>SOS</Text>
-          </TouchableOpacity>
         </>
       )}
 
@@ -210,6 +259,73 @@ export default function MapScreen() {
         onRequestClose={() => setShowModal(false)}
       >
         {/* Keep your modal code unchanged */}
+      </Modal>
+
+      {/* SOS Modal */}
+      <Modal
+        visible={showSOSModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSOSModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.sosModalContainer}>
+            <View style={styles.sosModalHeader}>
+              <Text style={styles.sosModalTitle}>🚨 Emergency SOS</Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowSOSModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.sosModalSubtitle}>
+              Describe your emergency situation. Your location will be automatically included.
+            </Text>
+            
+            <TextInput
+              style={styles.sosMessageInput}
+              placeholder="Enter your emergency message..."
+              placeholderTextColor="#999"
+              value={sosMessage}
+              onChangeText={setSosMessage}
+              multiline
+              numberOfLines={4}
+              maxLength={200}
+              editable={!isSendingSOS}
+            />
+            
+            <Text style={styles.characterCount}>
+              {sosMessage.length}/200 characters
+            </Text>
+            
+            <View style={styles.sosModalButtons}>
+              <TouchableOpacity 
+                style={[styles.sosModalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowSOSModal(false);
+                  setSosMessage('');
+                }}
+                disabled={isSendingSOS}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.sosModalButton, styles.sendButton, isSendingSOS && styles.disabledButton]}
+                onPress={sendSOS}
+                disabled={isSendingSOS}
+              >
+                {isSendingSOS ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.sendButtonText}>Send SOS</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -273,6 +389,93 @@ sosButtonText: {
   color: '#fff',
   fontSize: 16,
   fontWeight: 'bold',
+},
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 20,
+},
+sosModalContainer: {
+  backgroundColor: '#fff',
+  borderRadius: 20,
+  padding: 24,
+  width: '100%',
+  maxWidth: 400,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.25,
+  shadowRadius: 8,
+  elevation: 8,
+},
+sosModalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 16,
+},
+sosModalTitle: {
+  fontSize: 24,
+  fontWeight: 'bold',
+  color: '#D92D20',
+},
+closeButton: {
+  padding: 4,
+},
+sosModalSubtitle: {
+  fontSize: 16,
+  color: '#666',
+  marginBottom: 20,
+  lineHeight: 22,
+},
+sosMessageInput: {
+  borderWidth: 1,
+  borderColor: '#ddd',
+  borderRadius: 12,
+  padding: 16,
+  fontSize: 16,
+  textAlignVertical: 'top',
+  minHeight: 100,
+  marginBottom: 8,
+},
+characterCount: {
+  fontSize: 12,
+  color: '#999',
+  textAlign: 'right',
+  marginBottom: 20,
+},
+sosModalButtons: {
+  flexDirection: 'row',
+  gap: 12,
+},
+sosModalButton: {
+  flex: 1,
+  paddingVertical: 16,
+  borderRadius: 12,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+cancelButton: {
+  backgroundColor: '#f3f4f6',
+  borderWidth: 1,
+  borderColor: '#d1d5db',
+},
+cancelButtonText: {
+  color: '#374151',
+  fontSize: 16,
+  fontWeight: '600',
+},
+sendButton: {
+  backgroundColor: '#D92D20',
+},
+sendButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+disabledButton: {
+  opacity: 0.6,
 },
 
 });
